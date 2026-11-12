@@ -20,6 +20,13 @@ function variants(word, lang) {
   return [...new Set(list)].filter((v) => v.length >= 3);
 }
 
+// Al instalar o actualizar: borra las entradas de caché con formato antiguo
+chrome.runtime.onInstalled.addListener(async () => {
+  const all = await chrome.storage.local.get(null);
+  const old = Object.keys(all).filter((k) => k !== "settings" && !k.startsWith("v2:"));
+  if (old.length) await chrome.storage.local.remove(old);
+});
+
 // Lee de la caché. Devuelve undefined si no hay dato vigente
 async function cacheGet(key) {
   const stored = await chrome.storage.local.get(key);
@@ -32,10 +39,13 @@ async function cacheSet(key, data) {
   await chrome.storage.local.set({ [key]: { time: Date.now(), data } });
 }
 
-// Significados de una página de desambiguación: títulos tipo "Docker (software)".
+// Significados de una página de desambiguación: los artículos más relevantes de la
+// búsqueda de Wikipedia que contienen la palabra (Azure → Microsoft Azure, Azure (color)…).
 // Devuelve una lista (puede estar vacía) o undefined si falla la red
 async function fetchOptions(title, lang) {
-  const url = `https://${lang}.wikipedia.org/w/rest.php/v1/search/title?q=${encodeURIComponent(title)}&limit=15`;
+  const url =
+    `https://${lang}.wikipedia.org/w/api.php?action=query&generator=search&gsrnamespace=0&gsrlimit=12` +
+    `&prop=description&format=json&formatversion=2&gsrsearch=${encodeURIComponent(title)}`;
   let res;
   try {
     res = await fetch(url, { headers: { "Api-User-Agent": API_USER_AGENT } });
@@ -45,21 +55,28 @@ async function fetchOptions(title, lang) {
   if (!res.ok) return undefined;
 
   const json = await res.json();
-  const prefix = title.toLowerCase() + " (";
-  return json.pages
-    .filter((p) => p.title.toLowerCase().startsWith(prefix))
+  const pages = (json.query && json.query.pages) || [];
+  const word = title.toLowerCase();
+  // Fuera: la propia desambiguación, listas de apellidos/nombres, personas (fechas de
+  // vida en la descripción) y títulos sin la palabra
+  const skip =
+    /disambiguation|desambiguaci|referred to|surname|given name|name list|apellido|\((born|b\.|nacid[oa])|\(\d{3,4}\s*[–-]/i;
+  return pages
+    .sort((a, b) => a.index - b.index) // orden de relevancia
+    .filter((p) => p.title.toLowerCase() !== word && p.title.toLowerCase().includes(word))
+    .filter((p) => !skip.test(p.description || ""))
     .slice(0, 5)
     .map((p) => ({
       title: p.title,
       description: p.description || "",
-      url: `https://${lang}.wikipedia.org/wiki/${encodeURIComponent(p.key)}`,
+      url: `https://${lang}.wikipedia.org/wiki/${encodeURIComponent(p.title.replace(/ /g, "_"))}`,
     }));
 }
 
 // Pide el resumen de un título. Devuelve el objeto de la tarjeta o null
 // allowList=false: las desambiguaciones se descartan (para las frases)
 async function fetchSummary(title, lang, allowList = true) {
-  const key = `${lang}:${title.toLowerCase()}`;
+  const key = `v2:${lang}:${title.toLowerCase()}`; // v2: formato de las listas de significados
   const cached = await cacheGet(key);
   if (cached) return cached.data; // incluye los null (no encontrado)
 
