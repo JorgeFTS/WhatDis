@@ -34,8 +34,30 @@ const STOPWORDS = new Set(
     .map(normalize)
 );
 
-// Idioma de la página: español si el atributo lang empieza por "es", si no inglés
+// Ajustes (se cambian desde popup.html y se aplican sin recargar la página)
+const DEFAULTS = { enabled: true, lang: "auto" };
+let settings = { ...DEFAULTS };
+
+try {
+  chrome.storage.local
+    .get({ settings: DEFAULTS })
+    .then((stored) => {
+      settings = { ...DEFAULTS, ...stored.settings };
+    })
+    .catch(() => {});
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area !== "local" || !changes.settings) return;
+    settings = { ...DEFAULTS, ...changes.settings.newValue };
+    if (!settings.enabled) dismiss();
+  });
+} catch (err) {
+  // extensión recargada: se usan los ajustes por defecto
+}
+
+// Idioma de búsqueda: el elegido en los ajustes o, en automático, el de la página
+// (español si el atributo lang empieza por "es", si no inglés)
 function pageLang() {
+  if (settings.lang === "es" || settings.lang === "en") return settings.lang;
   const lang = (document.documentElement.lang || "").toLowerCase();
   return lang.startsWith("es") ? "es" : "en";
 }
@@ -121,9 +143,12 @@ const CARD_CSS = `
   .body { padding: 12px 16px 4px; }
   .title { margin: 0 0 6px; font: normal 1.35em/1.25 "Linux Libertine", Georgia, Times, serif; }
   .extract { margin: 0; display: -webkit-box; -webkit-line-clamp: 6; -webkit-box-orient: vertical; overflow: hidden; }
-  .foot { display: flex; justify-content: space-between; padding: 8px 16px 12px; font-size: 12px; color: #54595d; }
+  .foot { display: flex; justify-content: space-between; align-items: center; padding: 8px 16px 12px; font-size: 12px; color: #54595d; }
+  .right { display: flex; align-items: center; gap: 8px; }
   a { color: #36c; text-decoration: none; }
   a:hover { text-decoration: underline; }
+  .gear { padding: 0; border: 0; background: none; font: inherit; font-size: 15px; line-height: 1; color: #54595d; cursor: pointer; }
+  .gear:hover { color: #202122; }
 `;
 
 let host = null; // contenedor en la página
@@ -173,11 +198,13 @@ function showCard(data, wordRect) {
   }
   const body = el("div", "body");
   body.append(el("h2", "title", data.title), el("p", "extract", data.extract));
+  const gear = el("button", "gear", "⚙");
+  gear.title = "Ajustes de Lupa";
+  gear.addEventListener("click", openSettings);
+  const right = el("div", "right");
+  right.append(link("https://creativecommons.org/licenses/by-sa/4.0/", "CC BY-SA"), gear);
   const foot = el("div", "foot");
-  foot.append(
-    link(data.url, "Wikipedia ↗"),
-    link("https://creativecommons.org/licenses/by-sa/4.0/", "CC BY-SA")
-  );
+  foot.append(link(data.url, "Wikipedia ↗"), right);
   parts.push(body, foot);
   cardEl.replaceChildren(...parts);
 
@@ -232,11 +259,22 @@ async function lookupWord(word, lang) {
   }
 }
 
+// Pide al service worker que abra los ajustes (los content scripts no pueden)
+function openSettings() {
+  try {
+    chrome.runtime.sendMessage({ type: "openOptions" }).catch(() => {});
+  } catch (err) {
+    // extensión recargada
+  }
+  dismiss();
+}
+
 const sameRect = (a, b) =>
   a.left === b.left && a.top === b.top && a.width === b.width;
 
 // Cursor quieto durante HOVER_DELAY: buscar la palabra y mostrar la tarjeta
 async function onHover() {
+  if (!settings.enabled) return;
   const hit = wordUnderCursor(last.x, last.y, last.target);
   if (!hit || discardReason(hit.word)) return;
   if (current && current.word === hit.word && sameRect(current.rect, hit.rect)) return;

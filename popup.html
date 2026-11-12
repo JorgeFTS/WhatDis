@@ -2,9 +2,37 @@
 <html lang="es">
 <head>
   <meta charset="utf-8">
-  <title>Lupa</title>
+  <title>Ajustes de Lupa</title>
+  <style>
+    body { width: 260px; margin: 0; padding: 14px 16px; font: 14px/1.5 -apple-system, "Segoe UI", Roboto, Arial, sans-serif; color: #202122; background: #fff; }
+    h1 { margin: 0 0 12px; font: normal 18px "Linux Libertine", Georgia, serif; }
+    label { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 10px 0; }
+    select { font: inherit; padding: 2px 4px; }
+    p { margin: 12px 0 0; font-size: 12px; color: #54595d; }
+    a { color: #36c; }
+    @media (prefers-color-scheme: dark) {
+      body { background: #202124; color: #e8eaed; }
+      select { background: #303134; color: inherit; }
+      p { color: #9aa0a6; }
+      a { color: #8ab4f8; }
+    }
+  </style>
 </head>
 <body>
-  <p>Ajustes de Lupa (llegan en la Fase 5).</p>
+  <h1>🔎 Lupa</h1>
+  <label>
+    <span>Activar Lupa</span>
+    <input type="checkbox" id="enabled">
+  </label>
+  <label>
+    <span>Idioma</span>
+    <select id="lang">
+      <option value="auto">Automático</option>
+      <option value="es">Español</option>
+      <option value="en">English</option>
+    </select>
+  </label>
+  <p>Automático usa el idioma que declara la página. Texto de tarjetas: Wikipedia, CC BY-SA.</p>
+  <script src="popup.js"></script>
 </body>
 </html>
