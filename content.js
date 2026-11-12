@@ -110,7 +110,52 @@ function rectOverWord(node, start, end, x, y) {
   return [...range.getClientRects()].find((r) => inRect(r, x, y)) || null;
 }
 
-// Palabra y rectángulo bajo el cursor ({word, rect}) o null
+// Frases de 2 o 3 palabras que incluyen la palabra bajo el cursor ("Google Cloud").
+// Solo palabras con mayúscula inicial, separadas por un espacio, sin conectores en los
+// extremos. Devuelve [{text, start, end}] de la más larga a la más corta
+const isCapital = (w) => /^\p{Lu}/u.test(w);
+
+function phrasesAround(text, found) {
+  if (!isCapital(found.word)) return [];
+
+  // Vecinas con mayúscula a cada lado (máximo 2), de la más cercana a la más lejana
+  const before = [];
+  for (let s = found.start; before.length < 2 && text[s - 1] === " " && isWordChar(text[s - 2]); ) {
+    const w = wordAt(text, s - 2);
+    if (!isCapital(w.word)) break;
+    before.push(w);
+    s = w.start;
+  }
+  const after = [];
+  for (let e = found.end; after.length < 2 && text[e] === " " && isWordChar(text[e + 1]); ) {
+    const w = wordAt(text, e + 1);
+    if (!isCapital(w.word)) break;
+    after.push(w);
+    e = w.end;
+  }
+
+  const phrases = [];
+  for (let b = 0; b <= before.length; b++) {
+    for (let a = 0; a <= after.length; a++) {
+      if (b + a < 1 || b + a > 2) continue; // 2 o 3 palabras en total
+      const first = b ? before[b - 1] : found;
+      const last = a ? after[a - 1] : found;
+      if (STOPWORDS.has(normalize(first.word)) || STOPWORDS.has(normalize(last.word))) continue;
+      phrases.push({ text: text.slice(first.start, last.end), start: first.start, end: last.end, count: b + a + 1 });
+    }
+  }
+  return phrases.sort((p, q) => q.count - p.count);
+}
+
+// Rectángulos (uno por línea) que ocupa un tramo de texto
+function rectsOver(node, start, end) {
+  const range = document.createRange();
+  range.setStart(node, start);
+  range.setEnd(node, end);
+  return [...range.getClientRects()];
+}
+
+// Palabra bajo el cursor: {word, rect, node, phrases} o null
 function wordUnderCursor(x, y, target) {
   if (target && target.closest && target.closest(IGNORED)) return null;
   const sel = window.getSelection();
@@ -121,7 +166,8 @@ function wordUnderCursor(x, y, target) {
   const found = wordAt(caret.node.textContent, caret.offset);
   if (!found) return null;
   const rect = rectOverWord(caret.node, found.start, found.end, x, y);
-  return rect ? { word: found.word, rect } : null;
+  if (!rect) return null;
+  return { word: found.word, rect, node: caret.node, phrases: phrasesAround(caret.node.textContent, found) };
 }
 
 // ---------- Tarjeta (Shadow DOM cerrado) ----------
@@ -272,9 +318,9 @@ function dismiss() {
 }
 
 // Pide la búsqueda al service worker. Devuelve null ante cualquier fallo
-async function lookupWord(word, lang) {
+async function lookupWord(word, phrases, lang) {
   try {
-    return await chrome.runtime.sendMessage({ type: "lookup", word, lang });
+    return await chrome.runtime.sendMessage({ type: "lookup", word, phrases, lang });
   } catch (err) {
     return null; // extensión recargada o service worker no disponible
   }
@@ -290,21 +336,29 @@ function openSettings() {
   dismiss();
 }
 
-const sameRect = (a, b) =>
-  a.left === b.left && a.top === b.top && a.width === b.width;
+const overAny = (rects, x, y) => rects.some((r) => inRect(r, x, y));
 
-// Cursor quieto durante HOVER_DELAY: buscar la palabra y mostrar la tarjeta
+// Cursor quieto durante HOVER_DELAY: buscar la palabra (o frase) y mostrar la tarjeta
 async function onHover() {
   if (!settings.enabled) return;
   const hit = wordUnderCursor(last.x, last.y, last.target);
-  if (!hit || discardReason(hit.word)) return;
-  if (current && current.word === hit.word && sameRect(current.rect, hit.rect)) return;
+  if (!hit) return;
+  // La palabra sola puede estar descartada (corta, conector), pero seguir valiendo en una frase
+  const word = discardReason(hit.word) ? null : hit.word;
+  if (!word && hit.phrases.length === 0) return;
+  // Ya consultada (o mostrada) y el cursor sigue sobre ella o sobre su frase
+  if (current && overAny(current.rects, last.x, last.y)) return;
 
   const id = ++requestId;
+  hit.rects = [hit.rect];
   current = hit;
-  const data = await lookupWord(hit.word, pageLang());
+  const data = await lookupWord(word, hit.phrases.map((p) => p.text), pageLang());
   if (id !== requestId || !data) return; // llegó tarde o no hay resultado
   if (!inRect(hit.rect, last.x, last.y)) return; // el cursor ya se fue
+
+  // Si se encontró una frase, la tarjeta sigue abierta sobre todas sus palabras
+  const phrase = data.phrase && hit.phrases.find((p) => p.text === data.phrase);
+  if (phrase) hit.rects = rectsOver(hit.node, phrase.start, phrase.end);
   showCard(data, hit.rect);
 }
 
@@ -318,7 +372,7 @@ document.addEventListener("mousemove", (e) => {
 
   // Cursor sobre la tarjeta o sobre la palabra: mantenerla abierta
   const overCard = host && e.target === host;
-  if (overCard || (current && inRect(current.rect, e.clientX, e.clientY))) {
+  if (overCard || (current && overAny(current.rects, e.clientX, e.clientY))) {
     clearTimeout(hideTimer);
     hideTimer = null;
     if (overCard) return;

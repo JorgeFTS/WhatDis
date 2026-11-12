@@ -57,7 +57,8 @@ async function fetchOptions(title, lang) {
 }
 
 // Pide el resumen de un título. Devuelve el objeto de la tarjeta o null
-async function fetchSummary(title, lang) {
+// allowList=false: las desambiguaciones se descartan (para las frases)
+async function fetchSummary(title, lang, allowList = true) {
   const key = `${lang}:${title.toLowerCase()}`;
   const cached = await cacheGet(key);
   if (cached) return cached.data; // incluye los null (no encontrado)
@@ -79,6 +80,10 @@ async function fetchSummary(title, lang) {
   const json = await res.json();
   // Desambiguación: la tarjeta muestra una lista de significados
   if (json.type === "disambiguation") {
+    if (!allowList) {
+      await cacheSet(key, null);
+      return null;
+    }
     const options = await fetchOptions(json.title, lang);
     if (!options) return null; // error de red: no se guarda en caché
     const data = options.length
@@ -105,8 +110,14 @@ async function fetchSummary(title, lang) {
   return data;
 }
 
-// Busca la palabra y, si no existe, sus variantes
-async function lookup(word, lang) {
+// Busca primero las frases ("Google Cloud", de la más larga a la más corta; en paralelo)
+// y luego la palabra y, si no existe, sus variantes
+async function lookup(word, lang, phrases = []) {
+  const results = await Promise.all(phrases.map((p) => fetchSummary(p, lang, false)));
+  const i = results.findIndex(Boolean);
+  if (i !== -1) return { ...results[i], phrase: phrases[i] };
+
+  if (!word) return null;
   for (const candidate of variants(word, lang)) {
     const result = await fetchSummary(candidate, lang);
     if (result) return result;
@@ -122,7 +133,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return;
   }
   if (msg && msg.type === "lookup") {
-    lookup(msg.word, msg.lang)
+    const phrases = Array.isArray(msg.phrases)
+      ? msg.phrases.filter((p) => typeof p === "string").slice(0, 5)
+      : [];
+    lookup(msg.word, msg.lang, phrases)
       .then(sendResponse)
       .catch(() => sendResponse(null));
     return true; // respuesta asíncrona
