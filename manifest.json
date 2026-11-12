@@ -1,0 +1,31 @@
+{
+  "manifest_version": 3,
+  "name": "Lupa",
+  "version": "0.1.0",
+  "description": "Pasa el cursor sobre una palabra y mira una vista previa de Wikipedia.",
+  "permissions": ["storage"],
+  "host_permissions": ["https://*.wikipedia.org/*"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_title": "Lupa",
+    "default_popup": "popup.html"
+  },
+  "options_ui": {
+    "page": "popup.html",
+    "open_in_tab": false
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}
