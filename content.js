@@ -1,4 +1,4 @@
-// Content script de Lupa: detecta la palabra bajo el cursor, la busca en
+// Content script de WhatDis: detecta la palabra bajo el cursor, la busca en
 // Wikipedia (vía background.js) y muestra una tarjeta de vista previa.
 
 const HOVER_DELAY = 400; // ms con el cursor quieto
@@ -143,6 +143,12 @@ const CARD_CSS = `
   .body { padding: 12px 16px 4px; }
   .title { margin: 0 0 6px; font: normal 1.35em/1.25 "Linux Libertine", Georgia, Times, serif; }
   .extract { margin: 0; display: -webkit-box; -webkit-line-clamp: 6; -webkit-box-orient: vertical; overflow: hidden; }
+  .intro { margin: 0 0 4px; color: #54595d; }
+  .opts { display: flex; flex-direction: column; }
+  .opt { display: block; padding: 5px 0; border-top: 1px solid #eaecf0; }
+  .opt:hover { text-decoration: none; background: #f8f9fa; }
+  .opt-title { display: block; }
+  .opt-desc { display: block; font-size: 12px; color: #54595d; }
   .foot { display: flex; justify-content: space-between; align-items: center; padding: 8px 16px 12px; font-size: 12px; color: #54595d; }
   .right { display: flex; align-items: center; gap: 8px; }
   a { color: #36c; text-decoration: none; }
@@ -197,9 +203,24 @@ function showCard(data, wordRect) {
     parts.push(img);
   }
   const body = el("div", "body");
-  body.append(el("h2", "title", data.title), el("p", "extract", data.extract));
+  body.append(el("h2", "title", data.title));
+  if (data.options) {
+    // Desambiguación: lista de significados enlazados
+    body.append(el("p", "intro", data.lang === "es" ? "Puede referirse a:" : "May refer to:"));
+    const list = el("div", "opts");
+    for (const o of data.options) {
+      const a = link(o.url, "");
+      a.className = "opt";
+      a.append(el("span", "opt-title", o.title));
+      if (o.description) a.append(el("span", "opt-desc", o.description));
+      list.append(a);
+    }
+    body.append(list);
+  } else {
+    body.append(el("p", "extract", data.extract));
+  }
   const gear = el("button", "gear", "⚙");
-  gear.title = "Ajustes de Lupa";
+  gear.title = "Ajustes de WhatDis";
   gear.addEventListener("click", openSettings);
   const right = el("div", "right");
   right.append(link("https://creativecommons.org/licenses/by-sa/4.0/", "CC BY-SA"), gear);

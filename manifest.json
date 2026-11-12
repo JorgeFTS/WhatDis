@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "Lupa",
+  "name": "WhatDis",
   "version": "0.1.0",
   "description": "Pasa el cursor sobre una palabra y mira una vista previa de Wikipedia.",
   "permissions": ["storage"],
@@ -16,7 +16,7 @@
     }
   ],
   "action": {
-    "default_title": "Lupa",
+    "default_title": "WhatDis",
     "default_popup": "popup.html"
   },
   "options_ui": {

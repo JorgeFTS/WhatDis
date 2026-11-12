@@ -1,4 +1,4 @@
-// Ajustes de Lupa: se guardan al cambiar cualquier control.
+// Ajustes de WhatDis: se guardan al cambiar cualquier control.
 const DEFAULTS = { enabled: true, lang: "auto" };
 
 const enabledEl = document.getElementById("enabled");

@@ -1,6 +1,6 @@
-// Service worker de Lupa: busca en Wikipedia y guarda los resultados en caché.
+// Service worker de WhatDis: busca en Wikipedia y guarda los resultados en caché.
 
-const API_USER_AGENT = "Lupa/0.1 (https://github.com/JorgeFTS/WhatDis)";
+const API_USER_AGENT = "WhatDis/0.1 (https://github.com/JorgeFTS/WhatDis)";
 const CACHE_TTL = 7 * 24 * 60 * 60 * 1000; // 7 días
 
 // Variantes de una palabra: la original y versiones sin plural
@@ -32,6 +32,30 @@ async function cacheSet(key, data) {
   await chrome.storage.local.set({ [key]: { time: Date.now(), data } });
 }
 
+// Significados de una página de desambiguación: títulos tipo "Docker (software)".
+// Devuelve una lista (puede estar vacía) o undefined si falla la red
+async function fetchOptions(title, lang) {
+  const url = `https://${lang}.wikipedia.org/w/rest.php/v1/search/title?q=${encodeURIComponent(title)}&limit=15`;
+  let res;
+  try {
+    res = await fetch(url, { headers: { "Api-User-Agent": API_USER_AGENT } });
+  } catch (err) {
+    return undefined;
+  }
+  if (!res.ok) return undefined;
+
+  const json = await res.json();
+  const prefix = title.toLowerCase() + " (";
+  return json.pages
+    .filter((p) => p.title.toLowerCase().startsWith(prefix))
+    .slice(0, 5)
+    .map((p) => ({
+      title: p.title,
+      description: p.description || "",
+      url: `https://${lang}.wikipedia.org/wiki/${encodeURIComponent(p.key)}`,
+    }));
+}
+
 // Pide el resumen de un título. Devuelve el objeto de la tarjeta o null
 async function fetchSummary(title, lang) {
   const key = `${lang}:${title.toLowerCase()}`;
@@ -53,7 +77,18 @@ async function fetchSummary(title, lang) {
   if (!res.ok) return null; // otro error: no se guarda en caché
 
   const json = await res.json();
-  // Solo artículos normales (no desambiguaciones ni páginas especiales)
+  // Desambiguación: la tarjeta muestra una lista de significados
+  if (json.type === "disambiguation") {
+    const options = await fetchOptions(json.title, lang);
+    if (!options) return null; // error de red: no se guarda en caché
+    const data = options.length
+      ? { title: json.title, options, url: json.content_urls.desktop.page, lang }
+      : null;
+    await cacheSet(key, data);
+    return data;
+  }
+
+  // Solo artículos normales (no páginas especiales)
   if (json.type !== "standard" || !json.extract) {
     await cacheSet(key, null);
     return null;
@@ -94,4 +129,4 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
 });
 
-console.log("[Lupa] service worker activo");
+console.log("[WhatDis] service worker activo");
