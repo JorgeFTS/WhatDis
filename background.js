@@ -135,8 +135,12 @@ async function lookup(word, lang, phrases = []) {
   if (i !== -1) return { ...results[i], phrase: phrases[i] };
 
   if (!word) return null;
+  // Las listas de significados solo para palabras con mayúscula (Azure, Docker):
+  // en minúscula casi siempre es una palabra común ("grande", "great")
+  const capital = /^\p{Lu}/u.test(word);
   for (const candidate of variants(word, lang)) {
     const result = await fetchSummary(candidate, lang);
+    if (result && result.options && !capital) continue;
     if (result) return result;
   }
   return null;

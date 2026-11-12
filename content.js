@@ -77,11 +77,17 @@ function wordAt(text, offset) {
   return { word: text.slice(start, end), start, end };
 }
 
+// Terminaciones que casi siempre son verbos conjugados (no sustantivos):
+// es: hablando, comiendo, hablaba, hablaron, comieron, decidió · en: walked, wanted
+const VERB_ENDING = /(ando|iendo|yendo|aba|abas|aban|aron|ieron|ió|(?<=...[^e])ed)$/u;
+
 // Devuelve el motivo para descartar la palabra, o null si es válida
 function discardReason(word) {
   if (/\p{N}/u.test(word)) return "tiene números";
   if ([...word].length < MIN_LENGTH) return "muy corta";
   if (STOPWORDS.has(normalize(word))) return "conector/artículo/verbo común";
+  // Formas verbales claras (solo en minúscula: "Orlando" o "Fernando" son nombres)
+  if (word === word.toLowerCase() && VERB_ENDING.test(word.normalize("NFC"))) return "forma verbal";
   return null;
 }
 
