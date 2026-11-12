@@ -82,7 +82,9 @@ async function lookup(word, lang) {
 // El content script pide búsquedas con un mensaje
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg && msg.type === "lookup") {
-    lookup(msg.word, msg.lang).then(sendResponse);
+    lookup(msg.word, msg.lang)
+      .then(sendResponse)
+      .catch(() => sendResponse(null));
     return true; // respuesta asíncrona
   }
 });
